@@ -8,11 +8,14 @@ http://willie.dftba.net/
 """
 from __future__ import unicode_literals
 
-from lxml import etree
+import json
 import re
+
 from willie import web, tools
 from willie.module import rule
 
+query_url = 'https://api-dev.bugzilla.mozilla.org/latest/bug/%s'
+bug_url   = 'http://bugzil.la/'
 
 def configure(config):
     """
@@ -40,22 +43,43 @@ def setup(bot):
     domains = '|'.join(bot.config.bugzilla.get_list('domains'))
     regex = re.compile((r'https?://(%s)'
                          '(/show_bug.cgi\?\S*?)'
-                         '(id=\d+)')
+                         'id=(\d+)')
                        % domains)
     bot.memory['url_callbacks'][regex] = show_bug
 
 
 @rule(r'.*https?://(\S+?)'
        '(/show_bug.cgi\?\S*?)'
-       '(id=\d+).*')
+       'id=(\d+).*')
 def show_bug(bot, trigger, match=None):
     """Show information about a Bugzilla bug."""
     match = match or trigger
     domain = match.group(1)
     if domain not in bot.config.bugzilla.get_list('domains'):
         return
-    url = 'https://%s%sctype=xml&%s' % match.groups()
-    data = web.get(url)
+
+    report_bug(bot, match.group(3))
+
+@rule(r'(?i).*\bbug\s+(\d+).*')
+def show_bugno(bot, trigger, match=None):
+    match = match or trigger
+    report_bug(bot,
+               match.group(1))
+
+def report_bug(bot, bugno):
+    entry = json.loads(web.get(query_url % bugno))
+
+    bot.say('Bug %s%s %s' % (
+        bug_url, bugno,
+        ', '.join((entry.get('assigned_to', {'name': '---'})['name'],
+                   entry.get('status', '---'),
+                   entry.get('resolution', '---'),
+                   entry.get('priority', '---'),
+                   entry.get('summary', '---')))))
+
+    return
+
+    data = web.get(url, dont_decode=True)
     bug = etree.fromstring(data).find('bug')
 
     message = ('[BUGZILLA] %s | Product: %s | Component: %s | Version: %s | ' +

@@ -61,6 +61,9 @@ def setup(bot=None):
     if not bot:
         return
 
+    if not bot.config.has_section('url'):
+        bot.config.add_section('url')
+
     if bot.config.has_option('url', 'exclude'):
         regexes = [re.compile(s) for s in
                    bot.config.url.get_list('exclude')]
@@ -71,7 +74,7 @@ def setup(bot=None):
     # callbacks list because 1, it's easier to deal with modules that are still
     # using this list, and not the newer callbacks list and 2, having a lambda
     # just to pass is kinda ugly.
-    if not bot.memory.contains('url_exclude'):
+    if True or not bot.memory.contains('url_exclude'):
         bot.memory['url_exclude'] = regexes
     else:
         exclude = bot.memory['url_exclude']
@@ -208,7 +211,10 @@ def check_callbacks(bot, trigger, url, run=True):
 def find_title(url):
     """Return the title for the given URL."""
     content, headers = web.get(url, return_headers=True, limit_bytes=max_bytes,
-                               dont_decode=True)
+                               dont_decode=True, only_200=True)
+    if not content:
+        return
+
     content_type = headers.get('Content-Type') or ''
     encoding_match = re.match('.*?charset *= *(\S+)', content_type)
     # If they gave us something else instead, try that

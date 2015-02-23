@@ -17,22 +17,40 @@ import sys
 import time
 
 
-def google_ajax(query):
+ENTITIES = {
+    'amp': '&',
+    'apos': "'",
+    'lt': '<',
+    'gt': '>',
+}
+def deentityify(str):
+    return re.sub(r'&(%s);' % '|'.join(ENTITIES.keys()),
+                  lambda m: ENTITIES[m.group(1)],
+                  str)
+
+
+def google_ajax(query, type='web'):
     """Search using AjaxSearch, and return its JSON."""
-    uri = 'http://ajax.googleapis.com/ajax/services/search/web'
-    args = '?v=1.0&safe=off&q=' + query
+    uri = 'http://ajax.googleapis.com/ajax/services/search/' + type
+    args = '?v=1.0&safe=off&q=' + web.quote(query)
     bytes = web.get(uri + args)
     return json.loads(bytes)
 
 
-def google_search(query):
-    results = google_ajax(query)
+def google_search(query, type='web'):
+    results = google_ajax(query, type)
     try:
-        return results['responseData']['results'][0]['unescapedUrl']
+        res = results['responseData']['results'][0]
+        res['titleNoFormatting'] = deentityify(res['titleNoFormatting'])
+        return '%(unescapedUrl)s - %(titleNoFormatting)s' % res
     except IndexError:
         return None
     except TypeError:
         return False
+
+
+def site_search(site, query):
+    return google_search('site:%s %s' % (site, query))
 
 
 def google_count(query):
@@ -54,6 +72,31 @@ def formatnumber(n):
     return ''.join(parts)
 
 
+def _site_search(names, site, extra=''):
+    @commands(*names)
+    def search(bot, trigger):
+        query = trigger.group(2)
+        if not query:
+            return bot.reply('.%s what?' % names[0])
+        uri = site_search(site, ' '.join((extra, query)))
+        if uri:
+            bot.reply(uri)
+            bot.memory['last_seen_url'][trigger.sender] = uri
+        elif uri is False:
+            bot.reply("Problem getting data from Google.")
+        else:
+            bot.reply("No results found for '%s'." % query)
+    return search
+
+devmo = _site_search(('devmo', 'mdn'), 'developer.mozilla.org')
+sump = _site_search(('sumo',), 'support.mozilla.org')
+amo = _site_search(('addons', 'amo'), 'addons.mozilla.org',
+                   extra='inurl:en-US/firefox/addon/ -inurl:reviews')
+bmo = _site_search(('bugzilla', 'bmo'), 'bugzilla.mozilla.org',
+                   extra='inurl:show_bug.cgi')
+sump = _site_search(('wikimo', 'wm'), 'wiki.mozilla.org')
+
+
 @commands('g', 'google')
 @example('.g swhack')
 def g(bot, trigger):
@@ -62,6 +105,23 @@ def g(bot, trigger):
     if not query:
         return bot.reply('.g what?')
     uri = google_search(query)
+    if uri:
+        bot.reply(uri)
+        bot.memory['last_seen_url'][trigger.sender] = uri
+    elif uri is False:
+        bot.reply("Problem getting data from Google.")
+    else:
+        bot.reply("No results found for '%s'." % query)
+
+
+@commands('i', 'image')
+@example('.i swhack')
+def g(bot, trigger):
+    """Queries Google images for the specified input."""
+    query = trigger.group(2)
+    if not query:
+        return bot.reply('.image what?')
+    uri = google_search(query, type='images')
     if uri:
         bot.reply(uri)
         bot.memory['last_seen_url'][trigger.sender] = uri
@@ -115,7 +175,7 @@ r_bing = re.compile(r'<h3><a href="([^"]+)"')
 
 def bing_search(query, lang='en-GB'):
     base = 'http://www.bing.com/search?mkt=%s&q=' % lang
-    bytes = web.get(base + query)
+    bytes = web.get(base + web.quote(query))
     m = r_bing.search(bytes)
     if m:
         return m.group(1)
@@ -125,7 +185,7 @@ r_duck = re.compile(r'nofollow" class="[^"]+" href="(.*?)">')
 
 def duck_search(query):
     query = query.replace('!', '')
-    uri = 'http://duckduckgo.com/html/?q=%s&kl=uk-en' % query
+    uri = 'http://duckduckgo.com/html/?q=%s&kl=uk-en' % web.quote(query)
     bytes = web.get(uri)
     m = r_duck.search(bytes)
     if m:
@@ -136,7 +196,7 @@ def duck_api(query):
     if '!bang' in query.lower():
         return 'https://duckduckgo.com/bang.html'
 
-    uri = 'http://api.duckduckgo.com/?q=%s&format=json&no_html=1&no_redirect=1' % query
+    uri = 'http://api.duckduckgo.com/?q=%s&format=json&no_html=1&no_redirect=1' % web.quote(query)
     results = json.loads(web.get(uri))
     if results['Redirect']:
         return results['Redirect']

@@ -11,8 +11,9 @@ Contributions from: Matt Meinwald and Morgan Goose
 This module will fix spelling errors if someone corrects them
 using the sed notation (s///) commonly found in vi/vim.
 """
-from __future__ import unicode_literals
+from __future__ import print_function, unicode_literals
 
+import operator
 import re
 from willie.tools import Nick, WillieMemory
 from willie.module import rule, priority
@@ -63,9 +64,9 @@ def collectlines(bot, trigger):
           [:,]\s+)?         # Followed by colon/comma and whitespace, if given
           s/                # The literal s/
           (                 # Group 2 is the thing to find
-            (?:\\/ | [^/])+ # One or more non-slashes or escaped slashes
+            (?:\\. | [^\\/])+ # One or more non-slashes or escaped slashes
           )/(               # Group 3 is what to replace with
-            (?:\\/ | [^/])* # One or more non-slashes or escaped slashes
+            (?:\\. | [^\\/])* # One or more non-slashes or escaped slashes
           )
           (?:/(\S+))?       # Optional slash, followed by group 4 (flags)
           """)
@@ -85,27 +86,39 @@ def findandreplace(bot, trigger):
     if Nick(rnick) not in search_dict[trigger.sender]:
         return
 
-    #TODO rest[0] is find, rest[1] is replace. These should be made variables of
-    #their own at some point.
-    rest = [trigger.group(2), trigger.group(3)]
-    rest[0] = rest[0].replace(r'\/', '/')
-    rest[1] = rest[1].replace(r'\/', '/')
+    FLAGS = {
+        'i': re.I,
+    }
+
+    pattern = trigger.group(2)
+    replacement = trigger.group(3)
     me = False  # /me command
+
     flags = (trigger.group(4) or '')
 
     # If g flag is given, replace all. Otherwise, replace once.
-    if 'g' in flags:
-        count = -1
-    else:
-        count = 1
+    count = 0 if 'g' in flags else 1
 
-    # repl is a lambda function which performs the substitution. i flag turns
-    # off case sensitivity. re.U turns on unicode replacement.
-    if 'i' in flags:
-        regex = re.compile(re.escape(rest[0]), re.U | re.I)
-        repl = lambda s: re.sub(regex, rest[1], s, count == 1)
-    else:
-        repl = lambda s: s.replace(rest[0], rest[1], count)
+    flags = reduce(operator.add,
+                   (FLAGS.get(f, 0) for f in flags),
+                   re.U)
+
+    def replacer(match):
+        def replacer(m):
+            if m.group(0) == '&':
+                return match.group(0)
+
+            if m.group(1).isdigit():
+                try:
+                    return match.group(int(m.group(1)))
+                except IndexError:
+                    return ''
+
+            return m.group(1)
+
+        return re.sub(r'\\(.)|&', replacer, replacement)
+
+    repl = lambda s: re.sub(pattern, replacer, s, count)
 
     # Look back through the user's lines in the channel until you find a line
     # where the replacement works

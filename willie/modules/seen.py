@@ -20,6 +20,7 @@ seen_dict = Ddict(dict)
 @commands('seen')
 def seen(bot, trigger):
     """Reports when and where the user was last seen."""
+    return
     if not trigger.group(2):
         bot.say(".seen <nick> - Reports when <nick> was last seen.")
         return

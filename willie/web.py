@@ -39,7 +39,8 @@ if not hasattr(ssl, 'match_hostname'):
 
 # HTTP GET
 def get(uri, timeout=20, headers=None, return_headers=False,
-        limit_bytes=None, verify_ssl=True, dont_decode=False):
+        limit_bytes=None, verify_ssl=True, dont_decode=False,
+        only_200=False):
     """Execute an HTTP GET query on `uri`, and return the result.
 
     `timeout` is an optional argument, which represents how much time we should
@@ -56,10 +57,13 @@ def get(uri, timeout=20, headers=None, return_headers=False,
     if not uri.startswith('http'):
         uri = "http://" + uri
     u = get_urllib_object(uri, timeout, headers, verify_ssl)
-    bytes = u.read(limit_bytes)
-    u.close()
-    if not dont_decode:
-        bytes = bytes.decode('utf-8')
+    if only_200 and u.getcode() != 200:
+        bytes = ''
+    else:
+        bytes = u.read(limit_bytes)
+        u.close()
+        if not dont_decode:
+            bytes = bytes.decode('utf-8')
     if not return_headers:
         return bytes
     else:
@@ -197,7 +201,7 @@ def quote(string, safe='/'):
 def quote_query(string):
     """Quotes the query parameters."""
     parsed = urlparse(string)
-    string = string.replace(parsed.query, quote(parsed.query, "/=&"), 1)
+    string = string.replace(parsed.query, quote(parsed.query, "/=&%"), 1)
     return string
 
 
